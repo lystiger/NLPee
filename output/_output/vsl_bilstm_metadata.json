@@ -1,0 +1,61 @@
+{
+  "model_name": "vsl_bilstm_classifier",
+  "model_family": "bilstm",
+  "export_format": "pytorch",
+  "version": "v1",
+  "is_state_dict": true,
+  "has_model_class": true,
+  "labels": [
+    "BAN",
+    "CAM_DIEC",
+    "DI",
+    "GI",
+    "HOC",
+    "HOM_TRUOC",
+    "KHONG",
+    "THICH",
+    "TOI"
+  ],
+  "modality": "cv",
+  "pipeline_stage": "classifier",
+  "language": "vi",
+  "locale": "vi-VN",
+  "input_spec": {
+    "shape": [
+      1,
+      35,
+      126
+    ],
+    "input_dim": 4410,
+    "sequence_length": 35,
+    "feature_dim": 126,
+    "modality": "cv",
+    "preprocess_profile": "wrist_center"
+  },
+  "architecture": {
+    "feature_dim": 126,
+    "hidden": 128,
+    "num_layers": 2,
+    "num_classes": 9,
+    "dropout": 0.3,
+    "bidirectional": true
+  },
+  "hyperparameters": {
+    "learning_rate": 0.001,
+    "batch_size": 32,
+    "epochs": 100,
+    "optimizer": "AdamW",
+    "loss": "CrossEntropyLoss",
+    "label_smoothing": 0.1,
+    "weight_decay": 0.01
+  },
+  "precision": 0.983402489626556,
+  "recall": 0.983402489626556,
+  "f1": 0.983402489626556,
+  "training_summary": {
+    "best_val_accuracy": 0.983402489626556,
+    "best_val_loss": 0.5490810945630074
+  },
+  "notes": "Vietnamese Sign Language BiLSTM classifier over MediaPipe 2-hand keypoint sequences.",
+  "created_at": "2026-03-20T05:01:41.874195Z"
+}
