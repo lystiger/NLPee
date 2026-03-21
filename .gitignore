@@ -1,7 +1,46 @@
-venv
-
+# Python
 __pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
 
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local caches
 cache/
+.cache/
 
-*zip
+# Build and packaging
+build/
+dist/
+*.egg-info/
+*.zip
+
+# Logs and local env files
+*.log
+.env
+.env.*
+
+# Model artifacts and generated outputs
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.h5
+*.png
+output/
+
+# Local runtime / downloaded binaries
+ollama/
+ollama_local/
+
+# Local test media
+*.mp4

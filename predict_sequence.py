@@ -15,6 +15,7 @@ from pathlib import Path
 
 from extractor import HandKeypointExtractor, FEATURE_DIM, SEQ_LENGTH
 from model_bundle import DEFAULT_METADATA_PATH, DEFAULT_MODEL_PATH, load_model
+from nlp_refiner import refine_text
 from predict_word import CLASSES
 
 
@@ -84,7 +85,8 @@ def pad_or_trim(segment, seq_length=SEQ_LENGTH):
 
 
 def predict_sequence(video_path, model_path, output_path=None,
-                     true_label=None, silence_threshold=10):
+                     true_label=None, silence_threshold=10,
+                     nlp_backend='rules'):
     device    = 'cuda' if torch.cuda.is_available() else 'cpu'
     model, _  = load_model(model_path=model_path, metadata_path=DEFAULT_METADATA_PATH, device=device)
     extractor = HandKeypointExtractor()
@@ -95,7 +97,7 @@ def predict_sequence(video_path, model_path, output_path=None,
 
     if not segments:
         print("[Cảnh báo] Không phát hiện cử chỉ nào trong video.")
-        return ""
+        return "", ""
 
     print(f"Phát hiện {len(segments)} cử chỉ.")
 
@@ -110,7 +112,10 @@ def predict_sequence(video_path, model_path, output_path=None,
             print(f"  Đoạn {i+1}: {CLASSES[pred_idx]}")
 
     result = ' '.join(predicted_words)
+    refined = refine_text(result, backend=nlp_backend) if result else ""
     print(f"\nKết quả: {result}")
+    if refined:
+        print(f"Câu tự nhiên: {refined}")
 
     if output_path:
         os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
@@ -118,9 +123,11 @@ def predict_sequence(video_path, model_path, output_path=None,
             if true_label:
                 f.write(f"true_label: {true_label} === ")
             f.write(f"Predict sequence: {result}\n")
+            if refined:
+                f.write(f"Refined sentence: {refined}\n")
         print(f"Lưu kết quả tại: {output_path}")
 
-    return result
+    return result, refined
 
 
 def predict_sequence_batch(data_dir, model_path, output_path, silence_threshold=10):
@@ -167,6 +174,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_path',       default='output/sequence.txt')
     parser.add_argument('--true_label',        default=None)
     parser.add_argument('--silence_threshold', type=int, default=10)
+    parser.add_argument('--nlp_backend',       default='rules')
     args = parser.parse_args()
 
     if args.video_path:
@@ -176,6 +184,7 @@ if __name__ == '__main__':
             output_path       = args.output_path,
             true_label        = args.true_label,
             silence_threshold = args.silence_threshold,
+            nlp_backend       = args.nlp_backend,
         )
     elif args.data_dir:
         predict_sequence_batch(

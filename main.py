@@ -5,7 +5,7 @@ Tích hợp PyTorch + MediaPipe (2 tay, không cần YOLO)
 """
 
 from tkinter import Tk, RIGHT, LEFT, BOTH, X, filedialog, StringVar, GROOVE
-from tkinter.ttk import Style, Entry
+from tkinter.ttk import Style, Entry, Combobox
 import tkinter.font as TkFont
 import tkinter as tk
 import threading
@@ -18,9 +18,10 @@ import numpy as np
 import torch
 
 from predict_word     import predict_single_video, CLASSES
-from predict_sequence import predict_sequence
+from predict_sequence import predict_sequence, pad_or_trim
 from extractor import HandKeypointExtractor, FEATURE_DIM, SEQ_LENGTH
 from model_bundle import DEFAULT_MODEL_PATH, load_model
+from nlp_refiner import DEFAULT_OLLAMA_MODEL, available_backends, refine_text
 
 
 # ─────────────────────────────────────────────
@@ -44,6 +45,12 @@ class Window(tk.Frame):
         self.frame_counter = 0
         self.infer_every_n_frames = 3
         self.current_prediction = ''
+        self.live_segment = []
+        self.silence_counter = 0
+        self.sequence_words = []
+        self.min_segment_frames = 8
+        self.silence_threshold = 10
+        self.segment_status = 'Ready'
         self.init_window()
 
     def init_window(self):
@@ -61,6 +68,8 @@ class Window(tk.Frame):
         self.outputvideofile  = StringVar()
         self.display_sign     = StringVar()
         self.display_sequence = StringVar()
+        self.display_refined  = StringVar()
+        self.nlp_backend      = StringVar(value="rules")
         self.control_frames = []
 
         # Input directory
@@ -112,7 +121,8 @@ class Window(tk.Frame):
         tk.Button(self.frame4, text='Reset',             bg='#b3b3b3', font=self.button_font,
                   command=self.reset, padx=6, pady=2).grid(row=0, column=3, padx=3, pady=3)
         self.start_webcam_button = tk.Button(self.frame4, text='Start webcam', bg='#b3b3b3', font=self.button_font,
-                  command=self.start_webcam, padx=6, pady=2).grid(row=0, column=4, padx=3, pady=3)
+                  command=self.start_webcam, padx=6, pady=2)
+        self.start_webcam_button.grid(row=0, column=4, padx=3, pady=3)
         self.stop_webcam_button = tk.Button(self.frame4, text='Stop webcam', bg='#b3b3b3', font=self.button_font,
                   command=self.stop_webcam, padx=6, pady=2)
         self.stop_webcam_button.grid(row=0, column=5, padx=3, pady=3)
@@ -135,7 +145,52 @@ class Window(tk.Frame):
         Entry(self.frame6, textvariable=self.display_sequence,
               font=self.font).pack(fill=X, padx=4, pady=2, expand=True)
 
+        # Refined text / NLP backend
+        self.frame10 = tk.Frame(self, relief=GROOVE, borderwidth=1)
+        self.frame10.pack(fill=X)
+        self.control_frames.append(self.frame10)
+        tk.Label(self.frame10, text='NLP backend', bg='#b3b3b3', font=self.button_font).pack(side=LEFT, padx=4, pady=3)
+        self.backend_combo = Combobox(
+            self.frame10,
+            textvariable=self.nlp_backend,
+            values=available_backends(),
+            state='readonly',
+            width=12,
+            font=self.button_font,
+        )
+        self.backend_combo.pack(side=LEFT, padx=4, pady=3)
+        Entry(self.frame10, textvariable=self.display_refined,
+              font=self.font).pack(fill=X, padx=4, pady=2, expand=True)
+
         # Video display
+        self.webcam_toolbar = tk.Frame(self, relief=GROOVE, borderwidth=1)
+        self.webcam_stop_only_button = tk.Button(
+            self.webcam_toolbar,
+            text='Stop webcam',
+            bg='#b3b3b3',
+            font=self.button_font,
+            command=self.stop_webcam,
+            padx=8,
+            pady=2,
+        )
+        self.webcam_stop_only_button.pack(side=LEFT, padx=4, pady=3)
+        self.webcam_word_label = tk.Label(
+            self.webcam_toolbar,
+            textvariable=self.display_sign,
+            bg='#d9d9d9',
+            font=self.font,
+            anchor='w',
+        )
+        self.webcam_word_label.pack(side=LEFT, fill=X, expand=True, padx=4, pady=2)
+        self.webcam_refined_label = tk.Label(
+            self.webcam_toolbar,
+            textvariable=self.display_refined,
+            bg='#d9d9d9',
+            font=self.font,
+            anchor='w',
+        )
+        self.webcam_refined_label.pack(side=LEFT, fill=X, expand=True, padx=4, pady=2)
+
         self.frame7 = tk.Frame(self, relief=GROOVE, borderwidth=1)
         self.frame7.pack(fill=BOTH, expand=True)
         self.my_label = tk.Label(self.frame7)
@@ -215,9 +270,12 @@ class Window(tk.Frame):
         if enabled:
             for frame in self.control_frames:
                 frame.pack_forget()
+            self.webcam_toolbar.pack_forget()
             self.frame7.pack_forget()
+            self.webcam_toolbar.pack(fill=X)
             self.frame7.pack(fill=BOTH, expand=True)
         else:
+            self.webcam_toolbar.pack_forget()
             self.frame7.pack_forget()
             self.frame1.pack(fill=X)
             self.frame2.pack(fill=X)
@@ -226,6 +284,7 @@ class Window(tk.Frame):
             self.frame4.pack(fill=X)
             self.frame5.pack(fill=X)
             self.frame6.pack(fill=X)
+            self.frame10.pack(fill=X)
             self.frame7.pack(fill=BOTH, expand=True)
             self.frame8.pack(fill=X)
 
@@ -251,7 +310,13 @@ class Window(tk.Frame):
         self.prediction_history.clear()
         self.frame_counter = 0
         self.current_prediction = ''
+        self.live_segment = []
+        self.silence_counter = 0
+        self.sequence_words = []
+        self.segment_status = 'Ready'
         self.display_sign.set('')
+        self.display_sequence.set('')
+        self.display_refined.set('')
         self._set_webcam_mode(True)
         self._set_status("Đã bật webcam realtime.")
         self._update_webcam_frame()
@@ -279,6 +344,39 @@ class Window(tk.Frame):
         self.current_prediction = stable_label
         self.display_sign.set(stable_label)
 
+    def _commit_live_segment(self):
+        if len(self.live_segment) < self.min_segment_frames:
+            self.live_segment = []
+            self.silence_counter = 0
+            return
+
+        feat = pad_or_trim(np.stack(self.live_segment, axis=0).astype(np.float32), SEQ_LENGTH)
+        with torch.no_grad():
+            x = torch.tensor(feat, dtype=torch.float32).unsqueeze(0).to(self.device)
+            out = self.model(x)
+            pred_idx = out.argmax(1).item()
+
+        word = CLASSES[pred_idx]
+        self.sequence_words.append(word)
+        self.display_sequence.set(' '.join(self.sequence_words))
+        self.display_sign.set(word)
+        self.current_prediction = word
+        self.live_segment = []
+        self.silence_counter = 0
+        self.display_refined.set(self._refine_sequence_text(' '.join(self.sequence_words)))
+        self.segment_status = f"Captured: {word}"
+
+    def _refine_sequence_text(self, text):
+        backend = self.nlp_backend.get() or "rules"
+        try:
+            return refine_text(text, backend=backend, model=DEFAULT_OLLAMA_MODEL)
+        except Exception as e:
+            self._set_status(f"NLP {backend} lỗi, fallback rules: {e}")
+            if backend != "rules":
+                self.nlp_backend.set("rules")
+                self.backend_combo.configure(values=available_backends())
+            return refine_text(text, backend="rules")
+
     def _update_webcam_frame(self):
         if not self.webcam_running or self.webcam is None:
             return
@@ -296,8 +394,21 @@ class Window(tk.Frame):
         has_hand = not np.allclose(feat, 0.0)
         self.frame_counter += 1
 
-        if has_hand and len(self.feature_buffer) == SEQ_LENGTH and self.frame_counter % self.infer_every_n_frames == 0:
-            self._predict_realtime_label()
+        if has_hand:
+            self.live_segment.append(feat)
+            self.silence_counter = 0
+            self.segment_status = "Sign word"
+            if len(self.feature_buffer) == SEQ_LENGTH and self.frame_counter % self.infer_every_n_frames == 0:
+                self._predict_realtime_label()
+        elif self.live_segment:
+            self.silence_counter += 1
+            pause_pct = int((self.silence_counter / self.silence_threshold) * 100)
+            pause_pct = min(pause_pct, 100)
+            self.segment_status = f"Pause to confirm: {pause_pct}%"
+            if self.silence_counter >= self.silence_threshold:
+                self._commit_live_segment()
+        else:
+            self.segment_status = "Next word"
 
         display_frame = frame.copy()
         live_text = self.current_prediction if self.current_prediction else "Detecting..."
@@ -312,17 +423,55 @@ class Window(tk.Frame):
             cv2.LINE_AA,
         )
 
+        status_color = (255, 220, 0) if has_hand else (0, 200, 255)
+        cv2.putText(
+            display_frame,
+            self.segment_status,
+            (20, 80),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            status_color,
+            2,
+            cv2.LINE_AA,
+        )
+
         if not has_hand:
-            cv2.putText(
-                display_frame,
-                "Show your hand to the camera",
-                (20, 80),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 200, 255),
-                2,
-                cv2.LINE_AA,
-            )
+            hint_text = "Pause, then move to the next word"
+        else:
+            hint_text = "Hold the sign steady"
+
+        sequence_text = self.display_sequence.get() or ""
+        refined_text = self.display_refined.get() or ""
+        cv2.putText(
+            display_frame,
+            f"Sequence: {sequence_text}"[:80],
+            (20, 120),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            display_frame,
+            f"Refined: {refined_text}"[:80],
+            (20, 160),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.75,
+            (220, 255, 220),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            display_frame,
+            hint_text,
+            (20, 200),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.75,
+            (220, 220, 220),
+            2,
+            cv2.LINE_AA,
+        )
 
         display_frame = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
         display_frame = cv2.resize(display_frame, (1200, 650))
@@ -333,6 +482,9 @@ class Window(tk.Frame):
         status_msg = "Webcam realtime đang chạy"
         if self.current_prediction:
             status_msg += f" - {self.current_prediction}"
+        if self.sequence_words:
+            status_msg += f" | {' '.join(self.sequence_words)}"
+        status_msg += f" | {self.segment_status}"
         self._set_status(status_msg)
         self.master.after(15, self._update_webcam_frame)
 
@@ -403,17 +555,20 @@ class Window(tk.Frame):
 
         output_dir = self.outputfilepath.get()
         output_txt = os.path.join(output_dir, 'sequence.txt') if output_dir else None
+        backend = self.nlp_backend.get() or "rules"
 
         def _run():
             self._set_status("Đang dự đoán chuỗi từ...")
             try:
-                result = predict_sequence(
+                result, refined = predict_sequence(
                     video_path  = video_path,
                     model_path  = MODEL_PATH,
                     output_path = output_txt,
+                    nlp_backend = backend,
                 )
                 self.display_sequence.set(result)
-                self._set_status(f"Dự đoán xong: {result}")
+                self.display_refined.set(refined)
+                self._set_status(f"Dự đoán xong: {refined or result}")
             except Exception as e:
                 self._set_status(f"Lỗi dự đoán chuỗi: {e}")
 
@@ -431,6 +586,7 @@ class Window(tk.Frame):
         self.outputvideofile.set('')
         self.display_sign.set('')
         self.display_sequence.set('')
+        self.display_refined.set('')
         self._set_status("Đã reset.")
 
     def close_window(self):
