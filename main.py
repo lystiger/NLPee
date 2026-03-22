@@ -329,6 +329,7 @@ class Window(tk.Frame):
         else:
             self.webcam_toolbar.pack_forget()
             self.frame7.pack_forget()
+            # Hiện lại các khung cũ
             self.frame1.pack(fill=X)
             self.frame2.pack(fill=X)
             self.frame3.pack(fill=X)
@@ -337,6 +338,7 @@ class Window(tk.Frame):
             self.frame5.pack(fill=X)
             self.frame6.pack(fill=X)
             self.frame10.pack(fill=X)
+            self.frame11.pack(fill=X) # <-- CẬU THIẾU DÒNG NÀY NÊN NÓ MẤT NÚT BLEU
             self.frame7.pack(fill=BOTH, expand=True)
             self.frame8.pack(fill=X)
 
@@ -433,24 +435,46 @@ class Window(tk.Frame):
     # ── BLEU / ROUGE ──
     @staticmethod
     def _tokenize(text):
-        return [t for t in text.lower().split() if t]
-
-    def _bleu_score(self, hypothesis, reference, max_n=4):
+        if not text: return []
+        import re
+        # Chuyển về chữ thường và thay '_' thành khoảng trắng
+        text = str(text).lower().replace('_', ' ')
+        # Xóa các ký tự đặc biệt
+        text = re.sub(r'[^\w\s]', '', text)
+        return text.split()
+    def _bleu_score(self, hypothesis, reference):
         hyp = self._tokenize(hypothesis)
         ref = self._tokenize(reference)
+        
         if not hyp or not ref:
             return 0.0
 
+        # Tự động chọn n-gram: tối đa là 4, nhưng không vượt quá độ dài câu
+        n_max = min(len(hyp), len(ref), 4)
+        
         precisions = []
-        for n in range(1, max_n + 1):
+        for n in range(1, n_max + 1):
             hyp_ngrams = Counter(tuple(hyp[i:i+n]) for i in range(len(hyp) - n + 1))
             ref_ngrams = Counter(tuple(ref[i:i+n]) for i in range(len(ref) - n + 1))
+            
             overlap = sum((hyp_ngrams & ref_ngrams).values())
             total = max(len(hyp) - n + 1, 1)
-            precisions.append((overlap + 1e-9) / total)  # smoothing to avoid zero
+            
+            # Tránh chia cho 0 và cộng một số cực nhỏ (smoothing nhẹ)
+            precisions.append((overlap + 0.1) / (total + 0.1))
 
-        geo_mean = math.exp(sum(math.log(p) for p in precisions) / max_n)
-        bp = 1.0 if len(hyp) > len(ref) else math.exp(1 - len(ref) / max(len(hyp), 1))
+        if not precisions: return 0.0
+
+        # Tính trung bình nhân (Geometric Mean) theo đúng chuẩn quốc tế
+        try:
+            geo_mean = math.exp(sum(math.log(p) for p in precisions) / len(precisions))
+        except ValueError:
+            return 0.0
+
+        # Brevity Penalty: Phạt nếu câu dự đoán quá ngắn so với đáp án
+        ratio = len(hyp) / len(ref)
+        bp = 1.0 if ratio > 1 else math.exp(1 - 1/ratio)
+        
         return bp * geo_mean
 
     def _bleu_components(self, hypothesis, reference, max_n=4):
@@ -558,22 +582,61 @@ class Window(tk.Frame):
         return (2 * prec * rec) / (prec + rec)
 
     def compute_scores(self):
+        import re
+        from unicodedata import normalize
+        
+        # Hàm nội bộ để xóa dấu và chuẩn hóa phục vụ so sánh
+        def chuan_hoa_so_sanh(s):
+            if not s: return ""
+            # Chuyển về chữ thường, thay gạch dưới thành khoảng trắng
+            s = normalize('NFC', s).lower().replace('_', ' ')
+            # Xóa dấu tiếng Việt
+            s = re.sub(r'[àáạảãâầấậẩẫăằắặẳẵ]', 'a', s)
+            s = re.sub(r'[èéẹẻẽêềếệểễ]', 'e', s)
+            s = re.sub(r'[ìíịỉĩ]', 'i', s)
+            s = re.sub(r'[òóọỏõôồốộổỗơờớợởỡ]', 'o', s)
+            s = re.sub(r'[ùúụủũưừứựửữ]', 'u', s)
+            s = re.sub(r'[ỳýỵỷỹ]', 'y', s)
+            s = re.sub(r'[đ]', 'd', s)
+            # Xóa ký tự đặc biệt
+            return re.sub(r'[^\w\s]', '', s).strip()
+
         reference = self.reference_text.get().strip()
-        candidate = self.display_refined.get().strip() or self.display_sequence.get().strip()
-        if not candidate:
-            self._set_status("Không có câu dự đoán để chấm điểm.")
-            return
+        raw_cand = self.display_sequence.get().strip()
+        refined_cand = self.display_refined.get().strip()
+        
         if not reference:
             self._set_status("Nhập Reference text để tính điểm.")
             return
 
-        bleu  = self._bleu_score(candidate, reference)
-        rouge = self._rouge_l(candidate, reference)
-        self.display_bleu.set(f"BLEU: {bleu*100:.1f}")
-        self.display_rouge.set(f"ROUGE-L: {rouge*100:.1f}")
-        self._set_status("Đã tính BLEU/ROUGE.")
-        self._update_result_illustration_if_open()
+        # CHUẨN HÓA TẤT CẢ VỀ KHÔNG DẤU ĐỂ CHẤM ĐIỂM
+        ref_clean = chuan_hoa_so_sanh(reference)
+        raw_clean = chuan_hoa_so_sanh(raw_cand)
+        refined_clean = chuan_hoa_so_sanh(refined_cand)
 
+        # Tính toán BLEU dựa trên bản đã chuẩn hóa
+        # (Giúp 'Tôi câm điếc' khớp 100% với 'toi cam diec')
+        bleu_raw = self._bleu_score(raw_clean, ref_clean) if raw_clean else 0
+        bleu_refined = self._bleu_score(refined_clean, ref_clean) if refined_clean else 0
+        
+        # ROUGE-L cũng dùng bản chuẩn hóa
+        rouge = self._rouge_l(refined_clean or raw_clean, ref_clean)
+        
+        # Cập nhật GUI (Hiển thị con số sau khi đã xử lý lệch định dạng)
+        self.display_bleu.set(f"BLEU: {bleu_refined*100:.1f}")
+        self.display_rouge.set(f"ROUGE-L: {rouge*100:.1f}")
+        
+        print(f"\n" + "="*35)
+        print(f"BÁO CÁO THỰC NGHIỆM (Đã chuẩn hóa)")
+        print(f"Ref gốc: {reference}")
+        print(f"Trước NLP (BLEU): {bleu_raw*100:.2f}%")
+        print(f"Sau NLP (BLEU):  {bleu_refined*100:.2f}%")
+        print(f"ROUGE-L: {rouge*100:.2f}%")
+        print("="*35 + "\n")
+        
+        self._set_status("Đã tính điểm (đã khử dấu/gạch dưới).")
+        if hasattr(self, '_update_result_illustration_if_open'):
+            self._update_result_illustration_if_open()
     def _current_candidate_reference(self):
         reference = self.reference_text.get().strip()
         candidate = self.display_refined.get().strip() or self.display_sequence.get().strip()
