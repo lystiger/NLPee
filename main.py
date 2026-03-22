@@ -580,6 +580,47 @@ class Window(tk.Frame):
         if prec == 0 and rec == 0:
             return 0.0
         return (2 * prec * rec) / (prec + rec)
+    def plot_comparison(self, bleu_raw, bleu_refined, rouge):
+        try:
+            import matplotlib.pyplot as plt
+            
+            # 1. Lấy thông tin từ GUI để đưa vào biểu đồ
+            test_case = self.reference_text.get().strip() or "N/A"
+            # Lấy giá trị từ đúng biến backend_combo của cậu
+            backend_name = self.backend_combo.get().upper() 
+            
+            fig, ax = plt.subplots(figsize=(7, 5))
+            labels = ['BLEU Trước NLP', 'BLEU Sau NLP', 'ROUGE-L']
+            values = [bleu_raw * 100, bleu_refined * 100, rouge * 100]
+            colors = ['#ff9999', '#66b3ff', '#99ff99'] # Đỏ nhạt, Xanh dương, Xanh lá
+
+            bars = ax.bar(labels, values, color=colors, width=0.5)
+            
+            # 2. Cấu hình tiêu đề hiển thị rõ Phương pháp và Câu test
+            ax.set_title(f'ĐÁNH GIÁ HIỆU NĂNG HỆ THỐNG\nMethod: {backend_name} | Case: "{test_case}"', 
+                         fontsize=11, fontweight='bold', color='#2c3e50', pad=20)
+            
+            ax.set_ylim(0, 115) # Để khoảng trống cho con số trên đầu cột
+            ax.set_ylabel('Điểm (%)', fontweight='bold')
+            ax.yaxis.grid(True, linestyle='--', alpha=0.6)
+
+            # Ghi số % cụ thể lên đầu mỗi cột
+            for bar in bars:
+                height = bar.get_height()
+                ax.annotate(f'{height:.1f}%',
+                            xy=(bar.get_x() + bar.get_width() / 2, height),
+                            xytext=(0, 5), textcoords="offset points",
+                            ha='center', va='bottom', fontweight='bold')
+
+            plt.tight_layout()
+            
+            # Lưu file ảnh (tự động ghi đè hoặc đổi tên theo backend)
+            plt.savefig(f'result_{backend_name.lower()}.png', dpi=300) 
+            plt.show() # Hiển thị biểu đồ lên màn hình
+            
+        except Exception as e:
+            # In ra terminal nếu có lỗi để cậu dễ debug
+            print(f"Lỗi vẽ biểu đồ: {e}")
 
     def compute_scores(self):
         import re
@@ -637,6 +678,10 @@ class Window(tk.Frame):
         self._set_status("Đã tính điểm (đã khử dấu/gạch dưới).")
         if hasattr(self, '_update_result_illustration_if_open'):
             self._update_result_illustration_if_open()
+        # Gọi hàm vẽ biểu đồ
+        self.plot_comparison(bleu_raw, bleu_refined, rouge)
+        
+        self._set_status("Đã tính điểm và xuất biểu đồ so sánh.")
     def _current_candidate_reference(self):
         reference = self.reference_text.get().strip()
         candidate = self.display_refined.get().strip() or self.display_sequence.get().strip()
