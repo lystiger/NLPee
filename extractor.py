@@ -11,7 +11,6 @@ import cv2
 import numpy as np
 from pathlib import Path
 from tqdm import tqdm
-import mediapipe as mp
 
 
 # ─────────────────────────────────────────────
@@ -65,24 +64,28 @@ class HandKeypointExtractor:
     def __init__(self):
         print("Initializing MediaPipe Hands...")
         try:
-            # MediaPipe >= 0.10.x
-            import mediapipe as mp
+            import mediapipe as mp  # type: ignore
+        except ModuleNotFoundError as e:
+            raise RuntimeError(
+                "Thiếu dependency `mediapipe`. Cài bằng `python -m pip install -r requirements.txt`."
+            ) from e
+
+        if not hasattr(mp, "solutions"):
+            raise RuntimeError(
+                "Gói `mediapipe` hiện tại không có `solutions` (thường do cài nhầm package hoặc bị "
+                "trùng tên file/thư mục `mediapipe`). Thử: `python -m pip uninstall mediapipe -y` rồi "
+                "`python -m pip install mediapipe`."
+            )
+
+        try:
             self.hands = mp.solutions.hands.Hands(
                 static_image_mode=False,
                 max_num_hands=2,
                 min_detection_confidence=0.5,
                 min_tracking_confidence=0.5,
             )
-        except AttributeError:
-            # MediaPipe cũ (legacy API)
-            import mediapipe as mp
-            mp_hands = mp.solutions.hands
-            self.hands = mp_hands.Hands(
-                static_image_mode=False,
-                max_num_hands=2,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5,
-            )
+        except Exception as e:
+            raise RuntimeError(f"Không khởi tạo được MediaPipe Hands: {e}") from e
         self.feature_dim = FEATURE_DIM
 
     def _landmarks_to_array(self, hand_landmarks):

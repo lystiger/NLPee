@@ -15,7 +15,7 @@ from pathlib import Path
 
 from extractor import HandKeypointExtractor, FEATURE_DIM, SEQ_LENGTH
 from model_bundle import DEFAULT_METADATA_PATH, DEFAULT_MODEL_PATH, load_model
-from nlp_refiner import refine_text
+from nlp_refiner import DEFAULT_OLLAMA_MODEL, refine_text
 from predict_word import CLASSES
 
 
@@ -86,7 +86,7 @@ def pad_or_trim(segment, seq_length=SEQ_LENGTH):
 
 def predict_sequence(video_path, model_path, output_path=None,
                      true_label=None, silence_threshold=10,
-                     nlp_backend='rules'):
+                     nlp_backend='rules', nlp_model=DEFAULT_OLLAMA_MODEL):
     device    = 'cuda' if torch.cuda.is_available() else 'cpu'
     model, _  = load_model(model_path=model_path, metadata_path=DEFAULT_METADATA_PATH, device=device)
     extractor = HandKeypointExtractor()
@@ -112,7 +112,7 @@ def predict_sequence(video_path, model_path, output_path=None,
             print(f"  Đoạn {i+1}: {CLASSES[pred_idx]}")
 
     result = ' '.join(predicted_words)
-    refined = refine_text(result, backend=nlp_backend) if result else ""
+    refined = refine_text(result, backend=nlp_backend, model=nlp_model) if result else ""
     print(f"\nKết quả: {result}")
     if refined:
         print(f"Câu tự nhiên: {refined}")
@@ -175,6 +175,7 @@ if __name__ == '__main__':
     parser.add_argument('--true_label',        default=None)
     parser.add_argument('--silence_threshold', type=int, default=10)
     parser.add_argument('--nlp_backend',       default='rules')
+    parser.add_argument('--nlp_model',         default=DEFAULT_OLLAMA_MODEL)
     args = parser.parse_args()
 
     if args.video_path:
@@ -185,6 +186,7 @@ if __name__ == '__main__':
             true_label        = args.true_label,
             silence_threshold = args.silence_threshold,
             nlp_backend       = args.nlp_backend,
+            nlp_model         = args.nlp_model,
         )
     elif args.data_dir:
         predict_sequence_batch(

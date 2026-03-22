@@ -3,7 +3,7 @@ opencv-python>=4.8.0
 numpy>=1.24.0
 
 # MediaPipe
-mediapipe>=0.10.13
+mediapipe=0.10.9
 
 # Deep Learning
 torch>=2.0.0

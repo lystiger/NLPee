@@ -1,6 +1,7 @@
 import os
 import subprocess
 from pathlib import Path
+import shutil
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -11,9 +12,15 @@ OLLAMA_BINARY = OLLAMA_APP_DIR / "bin" / "ollama"
 DEFAULT_OLLAMA_MODEL = "gbenson/qwen2.5-0.5b-instruct:Q2_K"
 
 
+def ollama_binary_path():
+    if OLLAMA_BINARY.exists():
+        return str(OLLAMA_BINARY)
+    return shutil.which("ollama")
+
+
 def available_backends():
     backends = ["rules"]
-    if OLLAMA_BINARY.exists():
+    if ollama_binary_path():
         backends.append("ollama")
     return backends
 
@@ -118,19 +125,22 @@ def rule_based_refine(text):
 
 def _ollama_env():
     env = os.environ.copy()
-    env["OLLAMA_MODELS"] = str(OLLAMA_MODELS_DIR)
+    # Only override model storage when using the bundled local Ollama.
+    # If we are using a system Ollama in PATH, keep the user's default config.
+    if OLLAMA_BINARY.exists():
+        env["OLLAMA_MODELS"] = str(OLLAMA_MODELS_DIR)
     return env
 
 
 def ollama_available():
-    return OLLAMA_BINARY.exists()
+    return bool(ollama_binary_path())
 
 
 def refine_with_ollama(text, model=DEFAULT_OLLAMA_MODEL, timeout=30):
     if not text.strip():
         return ""
     if not ollama_available():
-        raise RuntimeError("Ollama local binary not found.")
+        raise RuntimeError("Ollama binary not found (bundled or in PATH).")
 
     prompt = (
         "You are refining Vietnamese sign gloss output into a short natural Vietnamese sentence. "
@@ -138,8 +148,12 @@ def refine_with_ollama(text, model=DEFAULT_OLLAMA_MODEL, timeout=30):
         f"Gloss: {text}\nSentence:"
     )
 
+    binary = ollama_binary_path()
+    if not binary:
+        raise RuntimeError("Ollama binary not found (bundled or in PATH).")
+
     result = subprocess.run(
-        [str(OLLAMA_BINARY), "run", model, prompt],
+        [binary, "run", model, prompt],
         check=True,
         capture_output=True,
         text=True,
