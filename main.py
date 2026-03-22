@@ -621,6 +621,32 @@ class Window(tk.Frame):
         except Exception as e:
             # In ra terminal nếu có lỗi để cậu dễ debug
             print(f"Lỗi vẽ biểu đồ: {e}")
+    def export_to_csv(self, bleu_raw, bleu_refined, rouge):
+        import csv
+        import os
+        from datetime import datetime
+
+        file_exists = os.path.isfile('results_log.csv')
+        
+        # Lấy dữ liệu thực tế từ giao diện của cậu
+        data = {
+            'Timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'Glosses': self.display_sequence.get(),   # Chuỗi ký hiệu thô
+            'Reference': self.reference_text.get(),   # Câu chuẩn cậu gõ vào
+            'Refined': self.display_refined.get(),    # Câu sau khi qua NLP
+            'Backend': self.backend_combo.get(),      # RULES hoặc OLLAMA
+            'BLEU_Before': f"{bleu_raw * 100:.2f}",
+            'BLEU_After': f"{bleu_refined * 100:.2f}",
+            'ROUGE-L': f"{rouge * 100:.2f}"
+        }
+
+        # Lưu với encoding 'utf-8-sig' để Excel không bị lỗi font tiếng Việt
+        with open('results_log.csv', 'a', newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=data.keys())
+            if not file_exists:
+                writer.writeheader() 
+            writer.writerow(data)
+        print(">>> Đã lưu kết quả vào results_log.csv")
 
     def compute_scores(self):
         import re
@@ -678,6 +704,8 @@ class Window(tk.Frame):
         self._set_status("Đã tính điểm (đã khử dấu/gạch dưới).")
         if hasattr(self, '_update_result_illustration_if_open'):
             self._update_result_illustration_if_open()
+        # Dòng quan trọng đây: Gọi hàm vừa viết ở trên để lưu dữ liệu
+        self.export_to_csv(bleu_raw, bleu_refined, rouge)
         # Gọi hàm vẽ biểu đồ
         self.plot_comparison(bleu_raw, bleu_refined, rouge)
         
