@@ -1,0 +1,10 @@
+﻿Timestamp,Glosses,Reference,Refined,Backend,BLEU_Before,BLEU_After,ROUGE-L
+2026-03-23 16:09:29,THICH,Tôi câm điếc,Thích.,rules,1.23,1.23,0.00
+2026-03-23 16:09:44,THICH,Tôi câm điếc,Thích.,ollama,1.23,1.23,0.00
+2026-03-23 16:12:13,TOI CAM_DIEC,Tôi câm điếc,Tôi cảm ơn.,rules,100.00,31.83,66.67
+2026-03-23 16:12:19,TOI CAM_DIEC,Tôi câm điếc,Tôi cảm ơn.,ollama,100.00,31.83,66.67
+2026-03-23 16:27:15,BAN THICH GI,Bạn thích gì ,Bạn thích gì?,ollama,100.00,100.00,100.00
+2026-03-23 16:42:49,TOI THICH KHONG KHONG,Tôi thích đi học ,Tôi thích không.,rules,16.75,22.81,57.14
+2026-03-23 16:47:10,HOM_TRUOC BAN KHONG KHONG HOC HOC,Hôm trước bạn đi học,Hôm trước bạn không học.,ollama,17.98,28.88,80.00
+2026-03-23 16:50:44,TOI CAM_DIEC TOI THICH KHONG KHONG KHONG HOM_TRUOC,Tôi câm điếc tôi thích đi học,Hôm trước tôi cảm ơn tôi thích không.,ollama,40.06,8.33,53.33
+2026-03-23 16:52:57,TOI THICH KHONG KHONG KHONG,Tôi thích đi học,Tôi thích không.,rules,11.41,22.81,57.14
