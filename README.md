@@ -1,157 +1,208 @@
-# Vietnamese Sign Language Recognition
+# Vietnamese Sign Language Recognition via MediaPipe Landmark Extraction, Bidirectional LSTM Sequence Classification, and Rule-Based NLP Refinement
 
-Vietnamese Sign Language recognition system built for an NLP course project at the University of Science and Technology Hanoi. The project combines computer vision, sequence modeling, and lightweight NLP to translate sign videos into short Vietnamese sentences.
+This project presents a Vietnamese Sign Language recognition system developed for an NLP course project. Although the pipeline begins with landmark extraction from sign videos, the main contribution is framed from an NLP perspective: sign language is treated as a temporal sequence understanding problem, and the final objective is not only to classify gestures but also to generate readable Vietnamese text from gloss-like outputs.
 
-The current repository already includes:
+The system is designed as a lightweight proof-of-concept for short conversational expressions in Vietnamese. It combines sequence modeling with a small post-processing language module so that raw classifier predictions can be converted into more natural text. In this sense, the project sits between isolated sign recognition and low-resource sign language translation.
 
-- a trained MediaPipe + BiLSTM inference pipeline
-- a Tkinter desktop GUI for demo and evaluation
-- offline prediction for single-sign and multi-sign videos
-- live webcam prediction with word-by-word sequence building
-- a rule-based Vietnamese refinement layer
-- an optional Ollama-based local LLM refinement backend
-- exported model artifacts in [`output/_output`](output/_output)
-- the course report in [`NLP_course.pdf`](NLP_course.pdf)
+## Project Idea
 
-## Project Summary
+The central motivation of this work is that sign recognition should not be viewed only as a visual classification problem. A sign unfolds over time, just like a spoken word or a short phrase unfolds as a sequence. Because of that, Vietnamese Sign Language recognition can be interpreted in NLP terms:
 
-The system runs in three stages:
+- each frame is analogous to a token in a sequence
+- each landmark vector is analogous to a token embedding
+- a short sign clip forms a sequence input for a temporal encoder
+- predicted labels function like glosses
+- a final refinement stage maps glosses into natural Vietnamese text
 
-1. MediaPipe Hands extracts 2-hand landmarks from each frame.
-2. A BiLSTM classifies a fixed-length sequence of landmark features into sign labels.
-3. An NLP post-processing layer converts raw gloss-like outputs into more natural Vietnamese text.
+This NLP framing is especially useful in a low-resource setting, where a full gloss-to-sentence neural translation model is not yet realistic due to the lack of large parallel datasets.
 
-This repo is an in-progress course project, but the inference demo, evaluation tools, and exported model bundle are already usable.
+## System Overview
 
-## Main Features
+The pipeline consists of three main stages:
 
-- 2-hand landmark extraction with MediaPipe, without YOLO in the current pipeline
-- 126 features per frame: 63 for the left hand and 63 for the right hand
-- fixed input shape of `1 x 35 x 126`
-- 9-class Vietnamese Sign Language classifier
-- offline single-word prediction from video
-- offline multi-word sequence prediction from video
-- live webcam mode with pause-based word confirmation
-- BLEU and ROUGE-L scoring inside the GUI
-- CSV logging of evaluation results to [`results_log.csv`](results_log.csv)
-- per-case and aggregate metric plotting
+1. MediaPipe extracts hand landmarks from video frames.
+2. A Bidirectional LSTM classifies the resulting landmark sequence into sign labels.
+3. An NLP refinement module rewrites the raw output into a short Vietnamese sentence.
 
-## Vocabulary
+The current system works on a small vocabulary of 9 sign classes and focuses on short utterances. It is therefore best understood as a controlled proof-of-concept rather than a complete sign language translation system.
 
-The exported model currently predicts these 9 labels:
+## Why This Is An NLP Project
 
-| Label | Intended meaning |
-| --- | --- |
-| `BAN` | you |
-| `CAM_DIEC` | inconsistent in current materials; see note below |
-| `DI` | go |
-| `GI` | what |
-| `HOC` | study |
-| `HOM_TRUOC` | yesterday |
-| `KHONG` | no / not |
-| `THICH` | like |
-| `TOI` | I / me |
+From an NLP viewpoint, the key task is sequence modeling. The classifier does not make a decision from a single frame alone; instead, it processes an ordered sequence and learns temporal dependencies between frames. This makes the task conceptually close to sequence classification problems such as sentence classification, sequence labeling, or phoneme-to-word modeling.
 
-Note: the `CAM_DIEC` label is described inconsistently across the current code, logs, and report. The rule-based NLP layer currently maps it to `cảm ơn`, while parts of the report and example references also suggest `câm điếc`. This should be standardized before the final project release.
+The second NLP aspect appears after recognition. The raw output labels are not yet natural Vietnamese. They need to be normalized, reordered when necessary, restored with diacritics, and punctuated correctly. This post-processing step is a small gloss-to-text refinement problem. In the current project, that stage is handled by:
 
-## Reported Results
+- a deterministic rule-based backend
+- an optional local Qwen backend through Ollama
 
-According to [`NLP_course.pdf`](NLP_course.pdf), the main BiLSTM classifier achieved:
+This allows the project to compare interpretable symbolic refinement against a lightweight generative approach.
 
-- `95.02%` test accuracy
-- `95.57%` balanced accuracy
-- macro Precision `0.95`
-- macro Recall `0.96`
-- macro F1-score `0.95`
-- evaluation on `241` held-out test samples
-- early stopping at epoch `88`
+## Sequence Representation
 
-The paper also reports the main error patterns:
+Each input video is converted into a fixed-length sequence of 35 frames. For every frame, the system extracts a 126-dimensional feature vector corresponding to two-hand landmarks. The final model input has shape:
 
-- `TOI` is sometimes confused with `BAN`
-- `DI` is sometimes confused with `CAM_DIEC`
+```text
+1 x 35 x 126
+```
 
-Generated training artifacts included in the repo:
+In NLP language, this is similar to passing a short sentence of length 35 into a sequence encoder, where each timestep has its own learned representation. Padding shorter videos to a fixed length is also conceptually similar to using padding tokens in NLP pipelines.
 
-- [`training_history.png`](output/_output/training_history.png)
-- [`confusion_matrix.png`](output/_output/confusion_matrix.png)
+## BiLSTM Sequence Classifier
 
-## Architecture
+The main classifier is a Bidirectional LSTM. This choice is motivated by the small dataset size and the short sequence length. Compared with larger transformer-style models, BiLSTM is more suitable here because:
 
-### 1. Feature Extraction
+- the dataset is relatively limited
+- temporal order is essential
+- sequence length is short enough that recurrent modeling is efficient
+- the model remains lightweight and practical for CPU deployment
 
-- MediaPipe Hands detects up to 2 hands directly on the full frame.
-- Each hand provides 21 landmarks with `(x, y, z)` coordinates.
-- Missing hands are padded with zeros.
-- Videos are sampled or padded to exactly `35` frames.
-
-### 2. Sequence Classifier
-
-The exported classifier in [`model_bundle.py`](model_bundle.py) is a BiLSTM with:
+The classifier uses:
 
 - hidden size `128`
 - `2` LSTM layers
 - bidirectional encoding
 - dropout `0.3`
-- layer normalization before final classification
+- a final linear layer over `9` output classes
 
-The metadata bundle is stored in:
+In the project report, BiLSTM is presented as a strong and appropriate sequence encoder for this low-resource VSL setting.
 
-- [`vsl_bilstm_state_dict.pth`](output/_output/vsl_bilstm_state_dict.pth)
-- [`vsl_bilstm_metadata.json`](output/_output/vsl_bilstm_metadata.json)
-- [`model.py`](output/_output/model.py)
+## NLP Refinement Layer
 
-### 3. NLP Refinement
+After classification, the model outputs gloss-like labels rather than fluent Vietnamese text. For example:
 
-The NLP layer in [`nlp_refiner.py`](nlp_refiner.py) currently supports:
+```text
+TOI TOI DI HOC
+```
 
-- duplicate removal
-- simple word reordering, especially `HOM_TRUOC`
+The rule-based NLP layer converts this into:
+
+```text
+Tôi đi học.
+```
+
+This refinement stage is important because raw sign labels are often repetitive, incomplete, or unnatural when displayed directly. The rule-based module handles several common operations:
+
+- duplicate suppression
+- reordering of time markers such as `HOM_TRUOC`
 - Vietnamese diacritic restoration
 - punctuation insertion
-- fixed phrase templates for common outputs
-- optional Ollama-based local LLM rewriting
+- simple template-based phrase rewriting
 
-## Repository Structure
+For example:
 
-| Path | Purpose |
-| --- | --- |
-| [`main.py`](main.py) | Tkinter GUI, webcam flow, evaluation tools |
-| [`extractor.py`](extractor.py) | MediaPipe landmark extraction and feature caching |
-| [`predict_word.py`](predict_word.py) | single-word prediction utilities |
-| [`predict_sequence.py`](predict_sequence.py) | multi-word sequence prediction from video |
-| [`model_bundle.py`](model_bundle.py) | model loading and metadata-driven configuration |
-| [`nlp_refiner.py`](nlp_refiner.py) | rule-based and Ollama-based text refinement |
-| [`plot_overall.py`](plot_overall.py) | aggregate plotting from `results_log.csv` |
-| [`train_colab_updated.ipynb`](train_colab_updated.ipynb) | Colab training notebook |
-| [`Code_emBao.py`](Code_emBao.py) | older YOLO + MediaPipe experimental code, not the main current pipeline |
-| [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) | concise project summary |
-| [`NLP_course.pdf`](NLP_course.pdf) | course report / write-up |
+```text
+BAN THICH GI -> Bạn thích gì?
+TOI DI HOC -> Tôi đi học.
+TOI TOI DI HOC -> Tôi đi học.
+HOM_TRUOC TOI DI HOC -> Hôm trước tôi đi học.
+```
 
-## Requirements
+An optional local Qwen backend is also supported. Its role is not to replace the classifier, but to refine the predicted gloss sequence into smoother Vietnamese text. This gives the project a useful comparison between rule-based and generative NLP refinement.
 
-- Python `3.11+` recommended
-- Tkinter available in your Python installation
-- webcam access for live mode
-- optional: Ollama for local LLM refinement
+## Vocabulary
 
-Python dependencies are listed in [`requirements.txt`](requirements.txt):
+The current system predicts 9 labels:
 
-- OpenCV
-- NumPy
-- MediaPipe
-- PyTorch
-- TorchVision
-- Pillow
-- imageio
-- imageio-ffmpeg
-- tqdm
-- scikit-learn
-- matplotlib
-- seaborn
-- pandas
+- `BAN`
+- `CAM_DIEC`
+- `DI`
+- `GI`
+- `HOC`
+- `HOM_TRUOC`
+- `KHONG`
+- `THICH`
+- `TOI`
 
-## Installation
+This vocabulary is intentionally small. The goal of the project is to validate the pipeline design and the NLP refinement idea, not to claim full-scale sign language translation.
+
+## Training and Model Behavior
+
+According to the latest project report, the model was trained on a dataset split into:
+
+- `80%` training
+- `10%` validation
+- `10%` test
+
+The held-out test set contains `241` samples. Training uses:
+
+- AdamW optimizer
+- learning rate `1e-3`
+- weight decay `1e-2`
+- label smoothing
+- early stopping
+- regularization and augmentation designed for sequence robustness
+
+Training stopped at epoch `88` through early stopping.
+
+The final reported classification performance is:
+
+- test accuracy: `95.02%`
+- balanced accuracy: `95.57%`
+- macro precision: `0.95`
+- macro recall: `0.96`
+- macro F1-score: `0.95`
+
+These results show that even with a relatively compact architecture, the sequence classification stage can perform strongly on a small fixed vocabulary.
+
+## NLP Evaluation
+
+Beyond recognition accuracy, the report evaluates the system from an NLP perspective by measuring how well the refinement layer transforms gloss sequences into natural Vietnamese sentences. This is an extrinsic evaluation setup: the refinement backend is judged based on downstream sentence quality rather than only classifier accuracy.
+
+The evaluation compares two backends:
+
+- rule-based refinement
+- Qwen 2.5B local refinement
+
+The main metrics are:
+
+- `BLEUbefore`: similarity between raw gloss prediction and the reference
+- `BLEUafter`: similarity between refined text and the reference
+- `ROUGE-L`: overlap in sequence structure and content
+
+Average results reported in the project are:
+
+- Rule-based backend: `BLEUbefore 80.6%`, `BLEUafter 60.9%`, `ROUGE-L 81.2%`
+- Qwen 2.5B backend: `BLEUbefore 64.5%`, `BLEUafter 42.3%`, `ROUGE-L 75.0%`
+
+The current findings suggest that the rule-based backend performs better overall on the present dataset. This is mainly because the dataset contains many short and relatively regular outputs, where deterministic templates are reliable. Qwen can generate more natural sentences in some longer or noisier cases, but it is also more likely to paraphrase incorrectly or over-interpret an already wrong gloss input.
+
+## Notes on BLEU and Short Sequences
+
+One important observation from the report is that BLEU-4 is not always a good metric for this project. Many predicted Vietnamese outputs are only 2 to 3 words long. In such cases, BLEU-4 can become artificially low or even misleading, not because the sentence is semantically wrong, but because the metric is poorly matched to very short outputs.
+
+For that reason, ROUGE-L is often a more informative metric in this project. It captures ordered token overlap and is more stable for short sign-derived sentences. The report therefore treats BLEU as a useful indicator, but not the only measure of quality.
+
+## Error Analysis
+
+The report highlights several important failure patterns.
+
+The first major confusion is:
+
+```text
+TOI -> BAN
+```
+
+This is especially serious because it changes the subject of a sentence. For example:
+
+```text
+Tôi đi học. -> Bạn đi học.
+```
+
+This kind of error is hard for the NLP layer to fix, because once the classifier outputs the wrong gloss, the refinement stage no longer has access to the original visual evidence.
+
+Another important confusion is:
+
+```text
+DI -> CAM_DIEC
+```
+
+This affects both recognition quality and downstream sentence quality.
+
+The report also notes a semantic ambiguity around the label `CAM_DIEC`. In some places it is interpreted closer to "cảm ơn", while in others it aligns with "câm điếc". This ambiguity introduces systematic evaluation noise and lowers downstream NLP metrics. In other words, part of the error is not only model error, but also label-definition inconsistency.
+
+## Running the Project
+
+Create a virtual environment and install dependencies:
 
 ```bash
 python -m venv venv
@@ -160,282 +211,75 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-If your Python build does not include Tkinter, install it through your OS package manager before running the GUI.
-
-If you see this error:
-
-```bash
-module 'mediapipe' has no attribute 'solutions'
-```
-
-reinstall the official package:
-
-```bash
-python -m pip uninstall -y mediapipe
-python -m pip install mediapipe
-```
-
-## Quick Start
-
-### Run the GUI
+Run the main application:
 
 ```bash
 python main.py
 ```
 
-The GUI supports:
+## Main Workflows
 
-- offline single-word prediction
-- offline multi-word sequence prediction
-- live webcam prediction
-- reference-based BLEU / ROUGE-L evaluation
-- PNG export of score graphs
+The GUI currently supports the following workflows:
 
-### Model Path
+### 1. Single-sign prediction
 
-By default, the app loads the exported model bundle from:
+- choose an input video
+- click `Predict sign`
+- the system outputs one predicted label
 
-```text
-output/_output/vsl_bilstm_state_dict.pth
-```
+### 2. Multi-sign sequence prediction
 
-You can run inference immediately as long as the dependencies are installed.
+- choose an input video
+- click `Predict sequence`
+- the system outputs a gloss sequence
+- the NLP layer refines it into Vietnamese text
 
-## How To Use the GUI
+### 3. NLP evaluation
 
-### A. Single-word prediction
+- enter a reference sentence
+- run prediction
+- compute BLEU and ROUGE-L
+- compare raw gloss output and refined sentence output
 
-1. Click `Input video file`.
-2. Choose a video containing one sign.
-3. Click `Predict sign`.
+### 4. Optional live mode
 
-The predicted class label will appear in the `Predict sign` field.
+The application also supports webcam-based prediction. However, the current interaction is still turn-based rather than continuous: the user signs one word, pauses, then signs the next word. This is useful for demos, but it is not yet equivalent to full real-time sentence translation.
 
-### B. Multi-word sequence prediction
+## Optional Ollama / Qwen Backend
 
-1. Click `Input video file`.
-2. Choose a video containing several signs.
-3. Optionally choose an `Output directory`.
-4. Select an NLP backend.
-5. Click `Predict sequence`.
+The default refinement backend is `rules`. If Ollama is installed locally, the project can also use a Qwen model for local text refinement.
 
-The GUI will show:
-
-- the raw predicted gloss sequence
-- the refined Vietnamese sentence
-
-If an output directory is selected, the sequence result is also written to `sequence.txt` in that directory.
-
-### C. Live webcam mode
-
-1. Click `Start webcam`.
-2. Sign one word clearly.
-3. Pause briefly so the system can confirm the word.
-4. Continue with the next word.
-5. Click `Stop webcam` when finished.
-
-Important: the webcam mode is currently word-by-word and pause-based. It is not full continuous sentence recognition.
-
-### D. Evaluation inside the GUI
-
-1. Enter the expected sentence in `Reference text`.
-2. Run sequence prediction or webcam prediction.
-3. Click `Compute BLEU/ROUGE`.
-
-The GUI will:
-
-- compute BLEU before and after NLP refinement
-- compute ROUGE-L
-- append the result to [`results_log.csv`](results_log.csv)
-- generate a comparison chart
-
-Additional evaluation buttons:
-
-- `Minh hoạ kết quả`: shows token-level overlap using an LCS-style visualization
-- `Xuất graph (PNG)`: exports a score graph to a PNG file
-- `Demo`: opens a short BLEU / ROUGE-L explanation panel
-
-Note: the scoring code normalizes case, underscores, punctuation, and Vietnamese diacritics before comparison, so references without accents can still score correctly against accent-restored outputs.
-
-## Optional Ollama Backend
-
-The default NLP backend is `rules`. If Ollama is available locally, the GUI also exposes an `ollama` backend.
-
-Default Ollama model used by the app:
-
-```text
-gbenson/qwen2.5-0.5b-instruct:Q2_K
-```
-
-Example setup:
+Example:
 
 ```bash
 ollama pull gbenson/qwen2.5-0.5b-instruct:Q2_K
 ```
 
-Then in the GUI:
+Then run the GUI and select the `ollama` backend. This backend is useful for qualitative comparison, especially when discussing rule-based NLP versus LLM-based rewriting.
 
-- choose `ollama` in `NLP backend`
-- keep or edit the model name in the `Model` field
+## Main Files
 
-The Ollama backend can produce more natural text in some cases, but it is still limited by upstream recognition errors.
+Some key files in the repository are:
 
-## Command-Line Usage
-
-### Batch single-word prediction from a labeled dataset
-
-```bash
-python predict_word.py \
-  --data_dir /path/to/NLP_DATASET \
-  --model_path output/_output/vsl_bilstm_state_dict.pth \
-  --output_path output/result.txt
-```
-
-Expected dataset layout:
-
-```text
-/path/to/NLP_DATASET/
-  BAN/
-  CAM_DIEC/
-  DI/
-  GI/
-  HOC/
-  HOM_TRUOC/
-  KHONG/
-  THICH/
-  TOI/
-```
-
-### Sequence prediction from one video
-
-```bash
-python predict_sequence.py \
-  --video_path /path/to/video.mp4 \
-  --model_path output/_output/vsl_bilstm_state_dict.pth \
-  --output_path output/sequence.txt \
-  --nlp_backend rules
-```
-
-Using Ollama instead of rules:
-
-```bash
-python predict_sequence.py \
-  --video_path /path/to/video.mp4 \
-  --model_path output/_output/vsl_bilstm_state_dict.pth \
-  --output_path output/sequence.txt \
-  --nlp_backend ollama \
-  --nlp_model gbenson/qwen2.5-0.5b-instruct:Q2_K
-```
-
-### Batch sequence prediction
-
-```bash
-python predict_sequence.py \
-  --data_dir /path/to/sequence_dataset \
-  --model_path output/_output/vsl_bilstm_state_dict.pth \
-  --output_path output/sequence_batch.txt
-```
-
-## Feature Extraction and Caching
-
-The current inference pipeline caches extracted features as `.npy` files. This is used both in the GUI and prediction scripts to avoid recomputing landmarks repeatedly.
-
-- GUI feature extraction writes cache files under `<output_dir>/cache`
-- single-video prediction uses `cache/predict/`
-- GUI runtime prediction uses `cache/gui/`
-
-This behavior is implemented in [`extractor.py`](extractor.py).
-
-## Training
-
-The training workflow lives in [`train_colab_updated.ipynb`](train_colab_updated.ipynb) and is designed for Google Colab.
-
-The notebook expects a dataset structure like:
-
-```text
-MyDrive/NLP_DATASET/
-  BAN/
-  CAM_DIEC/
-  DI/
-  GI/
-  HOC/
-  HOM_TRUOC/
-  KHONG/
-  THICH/
-  TOI/
-  VALIDATION/
-    BAN/
-    CAM_DIEC/
-    ...
-  TEST/
-    BAN/
-    CAM_DIEC/
-    ...
-```
-
-Training details described in the report include:
-
-- AdamW optimizer
-- learning rate `1e-3`
-- batch size `32`
-- label smoothing `0.1`
-- weight decay `1e-2`
-- gradient clipping
-- early stopping
-- augmentation with temporal shifting, keypoint masking, Gaussian noise, and frame dropout
-
-Exported artifacts are saved under [`output/_output`](output/_output).
-
-## Evaluation and Plotting
-
-Per-sample evaluation logs are stored in [`results_log.csv`](results_log.csv).
-
-To draw an aggregate comparison chart from that CSV:
-
-```bash
-python plot_overall.py
-```
-
-This script averages:
-
-- `BLEU_Before`
-- `BLEU_After`
-- `ROUGE-L`
-
-grouped by NLP backend.
+- `main.py`: GUI, prediction flow, and evaluation interface
+- `predict_sequence.py`: sequence prediction logic
+- `predict_word.py`: single-sign prediction
+- `nlp_refiner.py`: rule-based and Ollama-based refinement
+- `model_bundle.py`: model loading and metadata
+- `train_colab_updated.ipynb`: training notebook
 
 ## Current Limitations
 
-- the classifier only supports a fixed 9-class vocabulary
-- webcam mode is pause-based and not true continuous sign-to-sentence decoding
-- segmentation for multi-word videos relies on silent-gap heuristics and can fail on slow or transition-heavy signing
-- performance drops when hands are small, blurred, dark, or poorly separated from the background
-- the NLP layer improves fluency but cannot reliably repair wrong sign predictions
-- `CAM_DIEC` label semantics are not yet fully standardized across the project materials
-- the repository includes inference assets, but the training dataset itself is not included
+This project is still a proof-of-concept and has several important limitations:
 
-## Current Status
+- only 9 sign classes are supported
+- the system is closer to isolated sign recognition plus NLP refinement than full sign language translation
+- downstream text quality depends heavily on upstream recognition accuracy
+- the NLP module improves readability, but cannot reliably repair a wrong gloss prediction
+- BLEU-4 is not ideal for short outputs
+- `CAM_DIEC` remains semantically ambiguous in the current project materials
+- the live webcam mode is not yet robust continuous sentence recognition
 
-Working now:
+## Conclusion
 
-- offline single-word prediction
-- offline sequence prediction
-- live webcam prediction
-- word-by-word sequence building
-- rule-based Vietnamese refinement
-- optional Ollama refinement
-- GUI-based BLEU / ROUGE-L evaluation
-
-Not fully solved yet:
-
-- robust continuous real-time sentence segmentation
-- large-vocabulary recognition
-- stronger robustness to slow signing and directionally similar gestures
-- a finalized, fully consistent gloss-to-text mapping for all labels
-
-## Documentation
-
-For more detail, see:
-
-- [`NLP_course.pdf`](NLP_course.pdf) for the course paper
-- [`PROJECT_OVERVIEW.md`](PROJECT_OVERVIEW.md) for a short engineering overview
+This project demonstrates that Vietnamese Sign Language recognition can be meaningfully framed as an NLP problem. The most important contribution is not only the sequence classifier itself, but the combination of sequence modeling and gloss-to-text refinement. In a low-resource setting, the rule-based NLP backend currently provides the most stable overall results: it is simple, interpretable, and effective for short Vietnamese outputs. At the same time, the comparison with Qwen shows a clear path for future work on more flexible gloss-to-text generation once larger and cleaner VSL datasets become available.
