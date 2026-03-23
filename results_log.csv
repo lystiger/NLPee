@@ -1,6 +1,13 @@
 ﻿Timestamp,Glosses,Reference,Refined,Backend,BLEU_Before,BLEU_After,ROUGE-L
-2026-03-23 16:09:29,THICH,Tôi câm điếc,Thích.,rules,1.23,1.23,0.00
-2026-03-23 16:09:44,THICH,Tôi câm điếc,Thích.,ollama,1.23,1.23,0.00
+2026-03-23 17:45:18,TOI CAM_DIEC,tôi câm điếc,Tôi cảm ơn.,rules,100.00,31.83,66.67
+2026-03-23 17:52:45,BAN THICH GI,bạn thích gì ,Bạn thích gì?,rules,100.00,100.00,100.00
+2026-03-23 17:56:29,BAN THICH DI HOC,tôi thích đi học,Bạn thích đi học.,rules,39.52,39.52,75.00
+2026-03-23 18:00:24,HOM_TRUOC BAN DI HOC,hôm trước bạn đi học,Hôm trước bạn đi học.,rules,100.00,100.00,100.00
+2026-03-23 18:03:05,TOI CAM_DIEC TOI THICH DI HOC,tôi câm điếc tôi thích đi học,Tôi cảm ơn tôi thích đi học.,rules,100.00,50.26,85.71
+2026-03-23 18:05:27,TOI CAM_DIEC,toi cam diec,Tôi cảm ơn.,rules,100.00,31.83,66.67
+2026-03-23 18:07:40,BAN THICH DI HOC,ban thich di hoc,Bạn thích đi học.,rules,100.00,100.00,100.00
+2026-03-23 18:13:09,BAN THICH GI,ban thich gi???,Bạn thích gì?,rules,100.00,100.00,100.00
+2026-03-23 18:13:21,BAN THICH GI,ban thich gi,Bạn thích gì?,rules,100.00,100.00,100.00
 2026-03-23 16:12:13,TOI CAM_DIEC,Tôi câm điếc,Tôi cảm ơn.,rules,100.00,31.83,66.67
 2026-03-23 16:12:19,TOI CAM_DIEC,Tôi câm điếc,Tôi cảm ơn.,ollama,100.00,31.83,66.67
 2026-03-23 16:27:15,BAN THICH GI,Bạn thích gì ,Bạn thích gì?,ollama,100.00,100.00,100.00
