@@ -1,4 +1,4 @@
-# Vietnamese Sign Language Recognition via MediaPipe Landmark Extraction, Bidirectional LSTM Sequence Classification, and Rule-Based NLP Refinement
+# Semantic-Based Translation For Vietnamese Sign Glove Text
 
 This project presents a Vietnamese Sign Language recognition system developed for an NLP course project. Although the pipeline begins with landmark extraction from sign videos, the main contribution is framed from an NLP perspective: sign language is treated as a temporal sequence understanding problem, and the final objective is not only to classify gestures but also to generate readable Vietnamese text from gloss-like outputs.
 
@@ -205,16 +205,16 @@ The report also notes a semantic ambiguity around the label `CAM_DIEC`. In some 
 Create a virtual environment and install dependencies:
 
 ```bash
-python -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
 Run the main application:
 
 ```bash
-python main.py
+python3 main.py
 ```
 
 ## Main Workflows
@@ -241,7 +241,7 @@ The GUI currently supports the following workflows:
 - compute BLEU and ROUGE-L
 - compare raw gloss output and refined sentence output
 
-### 4. Optional live mode
+### 4. live webcammode
 
 The application also supports webcam-based prediction. However, the current interaction is still turn-based rather than continuous: the user signs one word, pauses, then signs the next word. This is useful for demos, but it is not yet equivalent to full real-time sentence translation.
 
