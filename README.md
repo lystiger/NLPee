@@ -25,6 +25,16 @@ The pipeline consists of three main stages:
 3. An NLP refinement module rewrites the raw output into a short Vietnamese sentence.
 
 The current system works on a small vocabulary of 9 sign classes and focuses on short utterances. It is therefore best understood as a controlled proof-of-concept rather than a complete sign language translation system.
+## Dataset
+The dataset used in this project was collected by our team under controlled indoor conditions. All gesture samples were recorded using a standard RGB camera with consistent background, lighting, and camera positioning.
+
+The dataset consists of 9 Vietnamese Sign Language (VSL) gesture classes, performed by a small number of participants. Each sample was manually labeled according to its corresponding gloss.
+
+Dataset link: [Download here](https://drive.google.com/drive/folders/13W0blv849YVr0VZEI7p9XLDKErRtNmy9?usp=drive_link)
+
+Due to the limited number of signers and controlled recording setup, the dataset may introduce bias and may not generalize well to real-world conditions. Therefore, this project should be considered a proof-of-concept rather than a large-scale sign language system.
+
+Future work will focus on expanding the dataset with more participants and more diverse environments.
 
 ## Why This Is An NLP Project
 
